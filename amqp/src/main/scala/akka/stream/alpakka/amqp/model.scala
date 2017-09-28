@@ -3,7 +3,9 @@
  */
 package akka.stream.alpakka.amqp
 
-import com.rabbitmq.client.ExceptionHandler
+import java.util.concurrent.atomic.AtomicReference
+
+import com.rabbitmq.client.{Connection, ExceptionHandler}
 
 /**
  * Internal API
@@ -12,6 +14,8 @@ sealed trait AmqpConnectorSettings {
   def connectionSettings: AmqpConnectionSettings
   def declarations: Seq[Declaration]
 }
+
+
 
 sealed trait AmqpSourceSettings extends AmqpConnectorSettings
 
@@ -126,6 +130,17 @@ object AmqpSinkSettings {
  * Only for internal implementations
  */
 sealed trait AmqpConnectionSettings
+
+final class SharedConnection(val settings: AmqpConnectionSettings) extends AmqpConnectionSettings {
+
+    private[amqp] final val connection: AtomicReference[Connection] = new AtomicReference[Connection]()
+}
+
+object SharedConnection {
+    def apply(settings: AmqpConnectionSettings): SharedConnection = new SharedConnection(settings)
+
+    def apply(): SharedConnection = apply(DefaultAmqpConnection)
+}
 
 /**
  * Connects to a local AMQP broker at the default port with no password.

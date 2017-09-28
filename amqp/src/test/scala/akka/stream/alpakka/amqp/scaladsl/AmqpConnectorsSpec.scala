@@ -30,7 +30,9 @@ class AmqpConnectorsSpec extends AmqpSpec {
       // use a list of host/port pairs where one is normally invalid, but
       // it should still work as expected,
       val connectionSettings =
+      SharedConnection(
         AmqpConnectionDetails(List(("invalid", 5673))).withHostsAndPorts(("localhost", 5672))
+      )
 
       //#queue-declaration
       val queueName = "amqp-conn-it-spec-simple-queue-" + System.currentTimeMillis()

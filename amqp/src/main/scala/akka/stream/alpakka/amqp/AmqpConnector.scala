@@ -15,40 +15,58 @@ private[amqp] trait AmqpConnector {
 
   def connectionFactoryFrom(settings: AmqpConnectionSettings): ConnectionFactory = {
     val factory = new ConnectionFactory
-    settings match {
-      case AmqpConnectionUri(uri) => factory.setUri(uri)
-      case AmqpConnectionDetails(_,
-                                 maybeCredentials,
-                                 maybeVirtualHost,
-                                 sslProtocol,
-                                 requestedHeartbeat,
-                                 connectionTimeout,
-                                 handshakeTimeout,
-                                 shutdownTimeout,
-                                 networkRecoveryInterval,
-                                 automaticRecoveryEnabled,
-                                 topologyRecoveryEnabled,
-                                 exceptionHandler) =>
-        maybeCredentials.foreach { credentials =>
-          factory.setUsername(credentials.username)
-          factory.setPassword(credentials.password)
-        }
-        maybeVirtualHost.foreach(factory.setVirtualHost)
-        sslProtocol.foreach(factory.useSslProtocol)
-        requestedHeartbeat.foreach(factory.setRequestedHeartbeat)
-        connectionTimeout.foreach(factory.setConnectionTimeout)
-        handshakeTimeout.foreach(factory.setHandshakeTimeout)
-        shutdownTimeout.foreach(factory.setShutdownTimeout)
-        networkRecoveryInterval.foreach(factory.setNetworkRecoveryInterval)
-        automaticRecoveryEnabled.foreach(factory.setAutomaticRecoveryEnabled)
-        topologyRecoveryEnabled.foreach(factory.setTopologyRecoveryEnabled)
-        exceptionHandler.foreach(factory.setExceptionHandler)
-      case DefaultAmqpConnection => // leave it be as is
+
+    def setFactory(s: AmqpConnectionSettings) = {
+      s match {
+        case AmqpConnectionUri(uri) => factory.setUri(uri)
+        case AmqpConnectionDetails(
+        _,
+        maybeCredentials,
+        maybeVirtualHost,
+        sslProtocol,
+        requestedHeartbeat,
+        connectionTimeout,
+        handshakeTimeout,
+        shutdownTimeout,
+        networkRecoveryInterval,
+        automaticRecoveryEnabled,
+        topologyRecoveryEnabled,
+        exceptionHandler
+        ) =>
+          maybeCredentials.foreach { credentials =>
+            factory.setUsername(credentials.username)
+            factory.setPassword(credentials.password)
+          }
+          maybeVirtualHost.foreach(factory.setVirtualHost)
+          sslProtocol.foreach(factory.useSslProtocol)
+          requestedHeartbeat.foreach(factory.setRequestedHeartbeat)
+          connectionTimeout.foreach(factory.setConnectionTimeout)
+          handshakeTimeout.foreach(factory.setHandshakeTimeout)
+          shutdownTimeout.foreach(factory.setShutdownTimeout)
+          networkRecoveryInterval.foreach(factory.setNetworkRecoveryInterval)
+          automaticRecoveryEnabled.foreach(factory.setAutomaticRecoveryEnabled)
+          topologyRecoveryEnabled.foreach(factory.setTopologyRecoveryEnabled)
+          exceptionHandler.foreach(factory.setExceptionHandler)
+        case DefaultAmqpConnection => // leave it be as is
+      }
     }
+
+    settings match {
+      case s: SharedConnection =>
+            setFactory(s.settings)
+      case s => setFactory(s)
+    }
+
     factory
   }
 
   def newConnection(factory: ConnectionFactory, settings: AmqpConnectionSettings): Connection = settings match {
+    case a: SharedConnection => a.synchronized{
+      if (a.connection.get() == null) {
+        a.connection.set(newConnection(factory, a.settings))
+      }
+      a.connection.get()
+    }
     case a: AmqpConnectionDetails => {
       import scala.collection.JavaConverters._
       if (a.hostAndPortList.nonEmpty)
@@ -132,7 +150,7 @@ private[amqp] trait AmqpConnectorLogic { this: GraphStageLogic =>
   override def postStop(): Unit = {
     if ((channel ne null) && channel.isOpen) channel.close()
     channel = null
-    if ((connection ne null) && connection.isOpen) connection.close()
+    if (!settings.connectionSettings.isInstanceOf[SharedConnection] && (connection ne null) && connection.isOpen) connection.close()
     connection = null
   }
 }
